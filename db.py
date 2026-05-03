@@ -38,14 +38,21 @@ CREATE TABLE IF NOT EXISTS "Grades" (
     "Name"        TEXT    NOT NULL,
     "Coefficient" REAL    NOT NULL DEFAULT 1.0,
     "Value"       REAL,
+    "Base"        REAL    NOT NULL DEFAULT 20.0,
     FOREIGN KEY ("Id_class") REFERENCES "Classes"("ID") ON DELETE CASCADE
 );
 """
 
 def init_db(db_path: str) -> None:
-    """Crée les tables si elles n'existent pas encore."""
+    """Crée les tables et applique les migrations si nécessaire."""
     with get_connection(db_path) as conn:
         conn.executescript(SCHEMA)
+        # Migration : ajout de la colonne Base si absente (bases existantes)
+        # ---> Met à jour les fichiers d'anciennes version
+        cols = [r[1] for r in conn.execute('PRAGMA table_info("Grades")').fetchall()]
+        if "Base" not in cols:
+            conn.execute('ALTER TABLE "Grades" ADD COLUMN "Base" REAL NOT NULL DEFAULT 20.0')
+            conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -129,22 +136,24 @@ def get_grade(db_path: str, grade_id: int) -> Optional[dict]:
 
 
 def create_grade(db_path: str, id_class: int, name: str,
-                 coefficient: float, value: Optional[float]) -> int:
+                 coefficient: float, value: Optional[float],
+                 base: float = 20.0) -> int:
     with get_connection(db_path) as conn:
         cur = conn.execute(
-            'INSERT INTO "Grades" ("Id_class","Name","Coefficient","Value") VALUES (?,?,?,?)',
-            (id_class, name, coefficient, value)
+            'INSERT INTO "Grades" ("Id_class","Name","Coefficient","Value","Base") VALUES (?,?,?,?,?)',
+            (id_class, name, coefficient, value, base)
         )
         conn.commit()
         return cur.lastrowid
 
 
 def update_grade(db_path: str, grade_id: int, id_class: int, name: str,
-                 coefficient: float, value: Optional[float]) -> bool:
+                 coefficient: float, value: Optional[float],
+                 base: float = 20.0) -> bool:
     with get_connection(db_path) as conn:
         cur = conn.execute(
-            'UPDATE "Grades" SET "Id_class"=?, "Name"=?, "Coefficient"=?, "Value"=? WHERE "ID"=?',
-            (id_class, name, coefficient, value, grade_id)
+            'UPDATE "Grades" SET "Id_class"=?, "Name"=?, "Coefficient"=?, "Value"=?, "Base"=? WHERE "ID"=?',
+            (id_class, name, coefficient, value, base, grade_id)
         )
         conn.commit()
         return cur.rowcount > 0
@@ -189,7 +198,8 @@ def get_stats(db_path: str) -> dict:
         mediane = sorted_vals[n // 2] if n % 2 == 1 else (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
         simple_moyenne = round(sum(values) / n, 2)
 
-    # ---- Moyenne par matière (pondérée par coefficient) ----
+    # ---- Moyenne par matière (pondérée par coefficient, normalisée sur 20) ----
+    # On ramène chaque note sur 20 via sa base avant de pondérer.
     class_avg: dict[int, float | None] = {}
     for c in classes:
         cid = c["ID"]
@@ -200,7 +210,8 @@ def get_stats(db_path: str) -> dict:
         else:
             total_coef = sum(g["Coefficient"] for g in filled_gs)
             class_avg[cid] = (
-                sum(g["Value"] * g["Coefficient"] for g in filled_gs) / total_coef
+                sum((g["Value"] / g.get("Base", 20.0)) * 20.0 * g["Coefficient"]
+                    for g in filled_gs) / total_coef
                 if total_coef else None
             )
 

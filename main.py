@@ -243,7 +243,8 @@ def api_create_grade():
             id_class=int(data["id_class"]),
             name=data["name"],
             coefficient=float(data.get("coefficient", 1.0)),
-            value=value
+            value=value,
+            base=float(data.get("base", 20.0))
         )
         return jsonify({"id": gid}), 201
     except (KeyError, ValueError) as e:
@@ -275,7 +276,8 @@ def api_update_grade(grade_id):
             id_class=int(data["id_class"]),
             name=data["name"],
             coefficient=float(data.get("coefficient", 1.0)),
-            value=value
+            value=value,
+            base=float(data.get("base", 20.0))
         )
     except (KeyError, ValueError) as e:
         abort(400, str(e))

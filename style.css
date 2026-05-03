@@ -1,0 +1,98 @@
+/*------Colors------*/
+
+:root {
+  color-scheme: dark;
+  --bg: #111317;
+  --surface: #1a1e25;
+  --surface-2: #20252e;
+  --text: #f3f5f8;
+  --muted: #acb3bf;
+  --accent: #67b3ff;
+  --good: #52cf83;
+  --warn: #ffd166;
+  --bad: #ff6b6b;
+  --border: #303744;
+}
+
+/*------General aspects------*/
+
+body {
+  margin: 0;
+  padding: 28px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 1.06rem;
+}
+
+/*------Cards and containers------*/
+
+.container { max-width: 1200px; margin: 0 auto; display: grid; gap: 18px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+}
+
+header.card h1 { margin: 0 0 8px; font-size: clamp(1.3rem, 3vw, 2rem); }
+
+/*------Stats section------*/
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.stat {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: help;
+}
+
+.stat .label { font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; }
+.stat .value { font-size: 1.35rem; font-weight: 700; }
+.stat.good .value { color: var(--good); }
+.stat.warn .value { color: var(--warn); }
+.stat.bad .value { color: var(--bad); }
+
+
+/*------Graph and classes section------*/
+
+.box {
+  height: 20px;
+  width: 20px;
+  margin-bottom: 15px;
+  border: 1px solid black;
+}
+
+.red {
+  background-color: red;
+}
+
+.green {
+  background-color: green;
+}
+
+.blue {
+  background-color: blue;
+}&
+
+.classes td {padding: 8px 2px; width: 1%;}
+.classes table {min-width: 100px;}
+/*------Notation table section------*/
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 760px; }
+th, td { border-bottom: 1px solid var(--border); padding: 8px 10px; text-align: left; font-size: 0.9rem; }
+th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
+

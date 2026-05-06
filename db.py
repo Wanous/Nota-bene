@@ -33,12 +33,12 @@ CREATE TABLE IF NOT EXISTS "Classes" (
 );
 
 CREATE TABLE IF NOT EXISTS "Grades" (
-    "ID"          INTEGER PRIMARY KEY AUTOINCREMENT,
-    "Id_class"    INTEGER NOT NULL,
-    "Name"        TEXT    NOT NULL,
-    "Coefficient" REAL    NOT NULL DEFAULT 1.0,
-    "Value"       REAL,
-    "Base"        REAL    NOT NULL DEFAULT 20.0,
+    "ID"       INTEGER PRIMARY KEY AUTOINCREMENT,
+    "Id_class" INTEGER NOT NULL,
+    "Name"     TEXT    NOT NULL,
+    "Weight"   REAL    NOT NULL DEFAULT 0.0,
+    "Base"     REAL    NOT NULL DEFAULT 20.0,
+    "Value"    REAL,
     FOREIGN KEY ("Id_class") REFERENCES "Classes"("ID") ON DELETE CASCADE
 );
 """
@@ -47,12 +47,7 @@ def init_db(db_path: str) -> None:
     """Crée les tables et applique les migrations si nécessaire."""
     with get_connection(db_path) as conn:
         conn.executescript(SCHEMA)
-        # Migration : ajout de la colonne Base si absente (bases existantes)
-        # ---> Met à jour les fichiers d'anciennes version
-        cols = [r[1] for r in conn.execute('PRAGMA table_info("Grades")').fetchall()]
-        if "Base" not in cols:
-            conn.execute('ALTER TABLE "Grades" ADD COLUMN "Base" REAL NOT NULL DEFAULT 20.0')
-            conn.commit()
+        conn.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -136,24 +131,25 @@ def get_grade(db_path: str, grade_id: int) -> Optional[dict]:
 
 
 def create_grade(db_path: str, id_class: int, name: str,
-                 coefficient: float, value: Optional[float],
+                 weight: float, value: Optional[float],
                  base: float = 20.0) -> int:
+    """weight : % que représente cette éval dans la matière. base : barème de notation."""
     with get_connection(db_path) as conn:
         cur = conn.execute(
-            'INSERT INTO "Grades" ("Id_class","Name","Coefficient","Value","Base") VALUES (?,?,?,?,?)',
-            (id_class, name, coefficient, value, base)
+            'INSERT INTO "Grades" ("Id_class","Name","Weight","Base","Value") VALUES (?,?,?,?,?)',
+            (id_class, name, weight, base, value)
         )
         conn.commit()
         return cur.lastrowid
 
 
 def update_grade(db_path: str, grade_id: int, id_class: int, name: str,
-                 coefficient: float, value: Optional[float],
+                 weight: float, value: Optional[float],
                  base: float = 20.0) -> bool:
     with get_connection(db_path) as conn:
         cur = conn.execute(
-            'UPDATE "Grades" SET "Id_class"=?, "Name"=?, "Coefficient"=?, "Value"=?, "Base"=? WHERE "ID"=?',
-            (id_class, name, coefficient, value, base, grade_id)
+            'UPDATE "Grades" SET "Id_class"=?, "Name"=?, "Weight"=?, "Base"=?, "Value"=? WHERE "ID"=?',
+            (id_class, name, weight, base, value, grade_id)
         )
         conn.commit()
         return cur.rowcount > 0
@@ -174,48 +170,45 @@ def get_stats(db_path: str) -> dict:
     """
     Calcule les statistiques globales.
 
-    Nouveaux indicateurs pondérés par crédits ECTS :
-    - score_obtenu  : pourcentage réellement obtenu sur 100 %
-                      = somme(moyenne_matiere * credits) / (total_credits * 20) * 100
-    - moyenne_pond  : moyenne générale pondérée par les crédits (sur 20)
-    - chart_credits : liste [{name, color, credits, pct}] pour le camembert 1
-    - chart_scores  : liste [{name, color, score_pct, missing_pct}] pour le camembert 2
+    Métrique unique : Weight (pourcentage de l'éval dans la matière, 0-100).
+    - pi = g["Weight"] / 100  (fraction dans la matière)
+    - obtained  = sum(ni * pi)  pour les notées  (ni = valeur 0-100)
+    - ungraded  = 1 - sum(pi notées)
+    - lost      = sum(pi notées) - obtained
     """
     grades  = get_all_grades(db_path)
     classes = get_all_classes(db_path)
 
-    # ---- Stats brutes (toutes notes confondues) ----
-    values = [g["Value"] for g in grades if g["Value"] is not None]
     total  = len(grades)
-    filled = len(values)
+    filled = len([g for g in grades if g["Value"] is not None])
 
-    if not values:
-        simple_moyenne = None
-        mediane = None
-    else:
-        sorted_vals = sorted(values)
-        n = len(sorted_vals)
-        mediane = sorted_vals[n // 2] if n % 2 == 1 else (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
-        simple_moyenne = round(sum(values) / n, 2)
-
-    # ---- Moyenne par matière (pondérée par coefficient, normalisée sur 20) ----
-    # On ramène chaque note sur 20 via sa base avant de pondérer.
-    class_avg: dict[int, float | None] = {}
+    # ---- Stats par matière ----
+    # avg_all : moyenne sur 100 (non notés = 0), = obtained_raw * 100
+    class_stats: dict[int, dict] = {}
     for c in classes:
-        cid = c["ID"]
-        gs  = [g for g in grades if g["Id_class"] == cid]
-        filled_gs = [g for g in gs if g["Value"] is not None]
-        if not filled_gs:
-            class_avg[cid] = None
-        else:
-            total_coef = sum(g["Coefficient"] for g in filled_gs)
-            class_avg[cid] = (
-                sum((g["Value"] / g.get("Base", 20.0)) * 20.0 * g["Coefficient"]
-                    for g in filled_gs) / total_coef
-                if total_coef else None
-            )
+        cid      = c["ID"]
+        cgs      = [g for g in grades if g["Id_class"] == cid]
+        # pi en fraction (sum peut être < 1 si % manquants)
+        sum_pi_all    = sum(g["Weight"] / 100.0 for g in cgs)
+        sum_pi_noted  = sum(g["Weight"] / 100.0 for g in cgs if g["Value"] is not None)
+        obtained_raw  = sum(
+            (g["Value"] / (g.get("Base") or 20.0)) * (g["Weight"] / 100.0)
+            for g in cgs if g["Value"] is not None
+        )
+        ungraded_raw  = 1.0 - sum_pi_noted          # % non encore noté (fraction matière)
+        lost_raw      = sum_pi_noted - obtained_raw  # % perdus
 
-    # ---- Graphique 1 : répartition des crédits ----
+        # Moyenne sur 20 (non notés = 0) = score obtenu * 20
+        avg_all = round(obtained_raw * 20, 2) if sum_pi_all > 0 else None
+
+        class_stats[cid] = {
+            "obtained_raw":  obtained_raw,
+            "ungraded_raw":  max(0.0, ungraded_raw),
+            "lost_raw":      max(0.0, lost_raw),
+            "avg_all":       avg_all,
+        }
+
+    # ---- Répartition par crédits ECTS ----
     total_credits = sum(c["NB credits"] for c in classes)
     chart_credits = []
     for c in classes:
@@ -227,54 +220,66 @@ def get_stats(db_path: str) -> dict:
             "pct":     pct,
         })
 
-    # ---- Graphique 2 : score obtenu par matière ----
-    # Chaque matière contribue à hauteur de (moy/20 * credits/total_credits * 100) %
-    chart_scores = []
-    score_total = 0.0
-    for c in classes:
-        cid  = c["ID"]
-        avg  = class_avg.get(cid)
-        cred = c["NB credits"]
-        if avg is not None and total_credits:
-            obtained = round(avg / 20 * cred / total_credits * 100, 2)
-        else:
-            obtained = 0.0
-        score_total += obtained
-        chart_scores.append({
-            "name":    c["Name"],
-            "color":   c["color"],
-            "avg":     round(avg, 2) if avg is not None else None,
-            "credits": cred,
-            "obtained_pct": obtained,
-        })
-    missing_pct = round(max(0.0, 100.0 - score_total), 2)
-    score_total = round(score_total, 2)
+    # ---- Graphique 2 : score / perdus / non notés par matière ----
+    chart_scores  = []
+    score_total   = 0.0
+    ungraded_total= 0.0
+    lost_total_cs = 0.0
 
-    # ---- Moyenne pondérée par crédits ----
-    if total_credits and any(class_avg[c["ID"]] is not None for c in classes):
-        num = sum(
-            class_avg[c["ID"]] * c["NB credits"]
-            for c in classes if class_avg[c["ID"]] is not None
-        )
-        den = sum(c["NB credits"] for c in classes if class_avg[c["ID"]] is not None)
-        moyenne_pond = round(num / den, 2) if den else None
-    else:
-        moyenne_pond = None
+    for c in classes:
+        cid    = c["ID"]
+        cred   = c["NB credits"]
+        weight = cred / total_credits if total_credits else 0.0  # part globale
+        cs     = class_stats[cid]
+        cgs    = [g for g in grades if g["Id_class"] == cid]
+
+        obtained     = round(cs["obtained_raw"]  * weight * 100, 2)
+        ungraded_pct = round(cs["ungraded_raw"]  * weight * 100, 2)
+        lost_pct     = round(cs["lost_raw"]      * weight * 100, 2)
+
+        score_total    += obtained
+        ungraded_total += ungraded_pct
+        lost_total_cs  += lost_pct
+
+        chart_scores.append({
+            "name":         c["Name"],
+            "color":        c["color"],
+            "avg":          cs["avg_all"],
+            "credits":      cred,
+            "obtained_pct": obtained,
+            "ungraded_pct": ungraded_pct,
+            "lost_pct":     lost_pct,
+            "grades": [
+                {
+                    "name":   g["Name"],
+                    "weight": g["Weight"],           # % de la matière (0-100)
+                    "base":   g.get("Base", 20.0) or 20.0,
+                    "value":  g["Value"],            # note brute (0..base), ou None
+                }
+                for g in cgs
+            ],
+        })
+
+    score_total    = round(score_total,    2)
+    ungraded_total = round(ungraded_total, 2)
+    lost_total     = round(lost_total_cs,  2)
+
+    # Moyenne globale pondérée (non notés = 0), sur 20
+    score_sur_20 = round(score_total / 100 * 20, 2)
+
+    # Taux de complétion : % des poids déjà notés / total possible
+    taux_completion = round(filled / total * 100, 1) if total else 0.0
 
     return {
-        "moyenne":          simple_moyenne,
-        "mediane":          round(mediane, 2) if mediane is not None else None,
-        "minimum":          min(values) if values else None,
-        "maximum":          max(values) if values else None,
-        "taux_completion":  round(filled / total * 100, 1) if total else 0.0,
-        "total":            total,
-        "filled":           filled,
-        # Nouvelles clés
-        "moyenne_pond":     moyenne_pond,
-        "score_obtenu":     score_total,
-        "missing_pct":      missing_pct,
-        "chart_credits":    chart_credits,
-        "chart_scores":     chart_scores,
+        "taux_completion": taux_completion,
+        "total":           total,
+        "filled":          filled,
+        "score_obtenu":    score_total,
+        "score_sur_20":    score_sur_20,
+        "ungraded_pct":    ungraded_total,
+        "lost_pct":        lost_total,
+        "chart_credits":   chart_credits,
+        "chart_scores":    chart_scores,
     }
 
 

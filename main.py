@@ -242,9 +242,9 @@ def api_create_grade():
             current_db(),
             id_class=int(data["id_class"]),
             name=data["name"],
-            coefficient=float(data.get("coefficient", 1.0)),
+            weight=float(data.get("weight", 0.0)),
             value=value,
-            base=float(data.get("base", 20.0))
+            base=float(data.get("base", 20.0)),
         )
         return jsonify({"id": gid}), 201
     except (KeyError, ValueError) as e:
@@ -275,9 +275,9 @@ def api_update_grade(grade_id):
             current_db(), grade_id,
             id_class=int(data["id_class"]),
             name=data["name"],
-            coefficient=float(data.get("coefficient", 1.0)),
+            weight=float(data.get("weight", 0.0)),
             value=value,
-            base=float(data.get("base", 20.0))
+            base=float(data.get("base", 20.0)),
         )
     except (KeyError, ValueError) as e:
         abort(400, str(e))
@@ -326,12 +326,12 @@ if __name__ == "__main__":
     URL  = f"http://127.0.0.1:{PORT}"
 
     # Ouvre le navigateur une fois que Flask est prêt (après 1 s)
-    def _open_browser():
-        webbrowser.open(URL)
+    #def _open_browser():
+    #    webbrowser.open(URL)
 
-    timer = threading.Timer(1.0, _open_browser)
-    timer.daemon = True
-    timer.start()
+    #timer = threading.Timer(1.0, _open_browser)
+    #timer.daemon = True
+    #timer.start()
 
     print(f"  Notator → {URL}")
     print(f"  Bases de données → {DB_FOLDER}")

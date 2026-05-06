@@ -88,11 +88,17 @@ header.card h1 { margin: 0 0 8px; font-size: clamp(1.3rem, 3vw, 2rem); }
   background-color: blue;
 }&
 
-.classes td {padding: 8px 2px; width: 1%;}
-.classes table {min-width: 100px;}
 /*------Notation table section------*/
 .table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; min-width: 760px; }
+
+/* Règles générales partagées par tous les tableaux */
+table { border-collapse: collapse; }
 th, td { border-bottom: 1px solid var(--border); padding: 8px 10px; text-align: left; font-size: 0.9rem; }
 th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
 
+/* Table des notes : pleine largeur avec min-width pour le scroll horizontal */
+.table-wrap table { width: 100%; min-width: 560px; }
+
+/* Table des matières : largeur auto, ne force pas la carte à s'élargir */
+table.classes { width: auto; min-width: 0; }
+table.classes td { padding: 4px 5px; width: auto; }

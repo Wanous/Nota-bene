@@ -4,37 +4,87 @@
   <meta charset="utf-8">
   <title>Notator — {{ db_name }}</title>
   <link rel="stylesheet" href="/style.css">
-  <script src="/script.js" defer></script>
   <style>
-    .classes-row { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
-    .classes-card { flex:0 0 auto; }
-    .charts-card  { flex:1 1 320px; }
+    /* ============================================================
+       GRID PRINCIPAL
+       Col 1 (header)  : pleine largeur
+       Col 2 (stats)   : pleine largeur
+       Col 3 (classes + charts) : 1fr | 2fr
+       Col 4 (notes)   : pleine largeur
+       Col 5 (stats basse) : 1fr | 3fr
+    ============================================================ */
+    .page-grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: 1fr;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
 
-    table.classes td, table.classes th { padding:4px 5px; font-size:0.8rem; white-space:nowrap; }
+    /* Rangée matières + graphiques */
+    .row-classes {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    /* Rangée stats basse */
+    .row-stats-low {
+      display: grid;
+      grid-template-columns: 1fr 3fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    @media (max-width: 800px) {
+      .row-classes, .row-stats-low { grid-template-columns: 1fr; }
+    }
+
+    /* Table matières compacte */
+*   table.classes td, table.classes th { font-size:0.8rem; white-space:nowrap; }
     table.classes .box { height:13px; width:13px; margin:0; border-radius:3px; }
 
-    .charts-wrap { display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; height:100%; }
+    /* Graphiques */
+    .charts-wrap { display:flex; align-items:center; justify-content:center; gap:18px; flex-wrap:wrap; height:100%; }
     .chart-block { display:flex; flex-direction:column; align-items:center; gap:8px; }
     .chart-title { font-size:0.7rem; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; text-align:center; }
-    .chart-arrow { font-size:1.4rem; color:var(--muted); flex-shrink:0; }
-    .chart-legend { display:flex; flex-direction:column; gap:3px; font-size:0.7rem; color:var(--muted); max-width:140px; }
+    .chart-arrow { font-size:1.6rem; color:var(--muted); flex-shrink:0; }
+    .chart-legend { display:flex; flex-direction:column; gap:3px; font-size:0.7rem; color:var(--muted); max-width:160px; }
     .legend-item { display:flex; align-items:center; gap:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 
-    .class-stats-row { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
-    .class-stats-info { flex:0 0 auto; min-width:200px; }
-    .class-stats-charts { flex:1 1 320px; }
-
+    /* Stats pills */
     .stat-pill { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 12px; }
     .stat-pill .label { font-size:0.75rem; color:var(--muted); margin-bottom:3px; }
     .stat-pill .value { font-size:1.1rem; font-weight:700; }
 
+    /* Boutons icône */
     .btn-icon { background:none; border:none; cursor:pointer; font-size:0.88rem; padding:2px 3px; opacity:.7; transition:opacity .15s; }
     .btn-icon:hover { opacity:1; }
     .good { color:var(--good); }
     .bad  { color:var(--bad);  }
     .warn { color:var(--warn); }
+    .info { color:var(--accent); }
 
+    /* Skeleton / loading overlay */
+    .loading-bar {
+      position: fixed; top:0; left:0; right:0; height:3px;
+      background: var(--accent);
+      transform: scaleX(0); transform-origin: left;
+      transition: transform .3s ease;
+      z-index: 200;
+    }
+    .loading-bar.active { transform: scaleX(0.7); }
+    .loading-bar.done   { transform: scaleX(1); opacity:0; transition: transform .2s ease, opacity .3s ease .1s; }
+
+    /* Indicateur % restant dans la modale */
+    .weight-hint { font-size:0.8rem; padding:6px 10px; border-radius:6px; background:var(--surface-2); border:1px solid var(--border); }
+    .weight-hint.ok   { border-color:var(--good); color:var(--good); }
+    .weight-hint.warn { border-color:var(--warn); color:var(--warn); }
+    .weight-hint.bad  { border-color:var(--bad);  color:var(--bad);  }
+
+    /* Modales */
     .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; z-index:100; }
     .modal-box { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:24px; width:100%; max-width:380px; display:grid; gap:12px; }
     .modal-box h2 { margin:0; font-size:1.05rem; }
@@ -47,8 +97,10 @@
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="loading-bar" id="loading-bar"></div>
+  <div class="container page-grid">
 
+    <!-- En-tête -->
     <header class="card" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
       <div>
         <h1>Notator</h1>
@@ -59,38 +111,36 @@
       <a href="/logout" style="background:var(--surface-2); border:1px solid var(--border); color:var(--muted); text-decoration:none; border-radius:7px; padding:6px 14px; font-size:0.82rem;">← Changer de base</a>
     </header>
 
-    <section class="card">
+    <!-- Statistiques globales -->
+    <section class="card" id="section-global-stats">
       <h2>Statistiques globales</h2>
       <div class="stats-grid">
-        <div class="stat {{ 'good' if stats.moyenne_pond and stats.moyenne_pond >= 10 else 'bad' if stats.moyenne_pond is not none else '' }}" title="Moyenne pondérée par crédits ECTS et coefficients">
-          <div class="label">Moy. pondérée</div>
-          <div class="value">{% if stats.moyenne_pond is not none %}{{ stats.moyenne_pond }}/20{% else %}—{% endif %}</div>
+        <div class="stat {{ 'good' if stats.score_sur_20 >= 10 else 'bad' }}" title="Score acquis sur 20 (non notés = 0)">
+          <div class="label">Moyenne</div>
+          <div class="value">{{ stats.score_sur_20 }}/20</div>
         </div>
-        <div class="stat {{ 'good' if stats.mediane and stats.mediane >= 10 else 'bad' if stats.mediane is not none else '' }}" title="Médiane (sur 20)">
-          <div class="label">Médiane</div>
-          <div class="value">{% if stats.mediane is not none %}{{ stats.mediane }}{% else %}—{% endif %}</div>
-        </div>
-        <div class="stat {{ 'bad' if stats.minimum is not none and stats.minimum < 10 else 'good' if stats.minimum is not none else '' }}" title="Note la plus basse (sur 20)">
-          <div class="label">Minimum</div>
-          <div class="value">{% if stats.minimum is not none %}{{ stats.minimum }}{% else %}—{% endif %}</div>
-        </div>
-        <div class="stat {{ 'good' if stats.maximum is not none and stats.maximum >= 10 else 'bad' if stats.maximum is not none else '' }}" title="Note la plus haute (sur 20)">
-          <div class="label">Maximum</div>
-          <div class="value">{% if stats.maximum is not none %}{{ stats.maximum }}{% else %}—{% endif %}</div>
-        </div>
-        <div class="stat {{ 'good' if stats.taux_completion >= 80 else 'warn' if stats.taux_completion >= 40 else 'bad' }}" title="{{ stats.filled }} note(s) sur {{ stats.total }}">
+        <div class="stat {{ 'good' if stats.taux_completion >= 80 else 'warn' if stats.taux_completion >= 40 else 'bad' }}" title="{{ stats.filled }} éval(s) notée(s) sur {{ stats.total }}">
           <div class="label">T. Complétion</div>
           <div class="value">{{ stats.taux_completion }} %</div>
         </div>
-        <div class="stat {{ 'good' if stats.score_obtenu >= 50 else 'warn' if stats.score_obtenu >= 30 else 'bad' }}" title="Score acquis sur l'ensemble">
+        <div class="stat {{ 'good' if stats.score_obtenu >= 50 else 'warn' if stats.score_obtenu >= 30 else 'bad' }}" title="Points remportés sur 100 %">
           <div class="label">Score obtenu</div>
           <div class="value">{{ stats.score_obtenu }} %</div>
+        </div>
+        <div class="stat bad" title="Points perdus sur les évals notées">
+          <div class="label">Perdus</div>
+          <div class="value">{{ stats.lost_pct }} %</div>
+        </div>
+        <div class="stat" title="Points des évals pas encore notées">
+          <div class="label">Non notés</div>
+          <div class="value" style="color:var(--accent);">{{ stats.ungraded_pct }} %</div>
         </div>
       </div>
     </section>
 
-    <div class="classes-row">
-      <section class="card classes-card">
+    <!-- Rangée matières + graphiques globaux -->
+    <div class="row-classes">
+      <section class="card" id="section-classes">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
           <h2 style="margin:0;">Matières</h2>
           <button onclick="openClassModal()" style="background:var(--good); color:#0a0e15; border:none; border-radius:6px; padding:4px 10px; font-size:0.78rem; font-weight:700; cursor:pointer;">+ Ajouter</button>
@@ -103,8 +153,10 @@
               <td>{{ c.Name }}</td>
               <td>{{ c['NB credits'] }}</td>
               <td>
-                {% set avg = stats.chart_scores | selectattr('name','equalto',c.Name) | map(attribute='avg') | first %}
-                {% if avg is not none %}<span class="{{ 'good' if avg >= 10 else 'bad' }}" style="font-weight:600;">{{ avg }}/20</span>{% else %}<span style="color:var(--muted);">—</span>{% endif %}
+                {% set cs = stats.chart_scores | selectattr('name','equalto',c.Name) | first %}
+                {% if cs and cs.avg is not none %}
+                  <span class="{{ 'good' if cs.avg >= 10 else 'bad' }}" style="font-weight:600;">{{ cs.avg }}/20</span>
+                {% else %}<span style="color:var(--muted);">—</span>{% endif %}
               </td>
               <td><div class="box" style="background:{{ c.color }}; border-color:{{ c.color }};"></div></td>
               <td>
@@ -119,25 +171,26 @@
         </table>
       </section>
 
-      <section class="card charts-card">
-        <h2 style="margin:0 0 12px;">Répartition globale</h2>
+      <section class="card">
+        <h2 style="margin:0 0 14px;">Répartition globale</h2>
         <div class="charts-wrap">
           <div class="chart-block">
             <div class="chart-title">Poids des matières</div>
-            <canvas id="chart-credits" width="140" height="140"></canvas>
+            <canvas id="chart-credits" width="170" height="170"></canvas>
             <div class="chart-legend" id="legend-credits"></div>
           </div>
           <div class="chart-arrow">&#8594;</div>
           <div class="chart-block">
-            <div class="chart-title">Score obtenu</div>
-            <canvas id="chart-scores" width="140" height="140"></canvas>
+            <div class="chart-title">Score / Perdus / Non notés</div>
+            <canvas id="chart-scores" width="170" height="170"></canvas>
             <div class="chart-legend" id="legend-scores"></div>
           </div>
         </div>
       </section>
     </div>
 
-    <section class="card">
+    <!-- Notes -->
+    <section class="card" id="section-grades">
       <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
           <h2 style="margin:0;">Notes</h2>
@@ -153,15 +206,12 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr>
-              <th>Matière</th><th>Nom</th><th>Note</th><th>Coefficient</th>
-              <th>% de la matière</th><th>% perçu</th><th></th>
-            </tr>
+            <tr><th>Matière</th><th>Nom</th><th>Note</th><th>% de la matière</th><th>% perçu</th><th></th></tr>
           </thead>
           <tbody id="grades-tbody">
             {% for g in grades %}
             <tr data-id="{{ g.ID }}" data-class-id="{{ g.Id_class }}"
-                data-coef="{{ g.Coefficient }}"
+                data-weight="{{ g.Weight }}"
                 data-value="{{ g.Value if g.Value is not none else '' }}"
                 data-base="{{ g.Base if g.Base is not none else 20 }}">
               <td>
@@ -173,59 +223,67 @@
               <td>{{ g.Name }}</td>
               <td>
                 {% if g.Value is not none %}
-                  {% set on20 = g.Value / g.Base * 20 if g.Base else g.Value %}
-                  <span class="{{ 'good' if on20 >= 10 else 'bad' }}" style="font-weight:700;">
-                    {{ g.Value }}/{{ g.Base | int if g.Base == (g.Base | int) else g.Base }}
+                  {% set on_base = g.Base if g.Base else 20 %}
+                  {% set ratio = g.Value / on_base %}
+                  <span class="{{ 'good' if ratio >= 0.5 else 'bad' }}" style="font-weight:700;">
+                    {{ g.Value }}/{{ on_base | int if on_base == (on_base | int) else on_base }}
                   </span>
                 {% else %}<span style="color:var(--muted);">—</span>{% endif %}
               </td>
-              <td>{{ g.Coefficient }}</td>
-              <td class="pct-of-class" data-class-id="{{ g.Id_class }}">—</td>
-              <td class="pct-earned" data-class-id="{{ g.Id_class }}" data-value="{{ g.Value if g.Value is not none else '' }}" data-base="{{ g.Base if g.Base is not none else 20 }}" data-coef="{{ g.Coefficient }}">—</td>
+              <td>{{ g.Weight }} %</td>
+              <td>
+                {% if g.Value is not none %}
+                  {% set on_base = g.Base if g.Base else 20 %}
+                  {% set earned = (g.Value / on_base * g.Weight) | round(2) %}
+                  <span class="{{ 'good' if earned >= g.Weight / 2 else 'bad' }}">{{ earned }} %</span>
+                {% else %}<span style="color:var(--muted);">—</span>{% endif %}
+              </td>
               <td>
                 <button class="btn-icon" onclick='editGrade({{ g | tojson }})'>✏️</button>
                 <button class="btn-icon" onclick="deleteGrade({{ g.ID }})">🗑️</button>
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="7" style="color:var(--muted); font-size:0.85rem;">Aucune note.</td></tr>
+            <tr id="grades-empty-static"><td colspan="6" style="color:var(--muted); font-size:0.85rem;">Aucune note.</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </section>
 
-    <div id="class-stats-section">
-      <div class="class-stats-row">
-        <section class="card class-stats-info">
-          <h2 id="class-stats-title" style="margin:0 0 12px;">Stats</h2>
-          <div style="display:grid; gap:8px;">
-            <div class="stat-pill"><div class="label">Moyenne pondérée</div><div class="value" id="cs-avg">—</div></div>
-            <div class="stat-pill"><div class="label">% réussi</div><div class="value" id="cs-pct-success">—</div></div>
-            <div class="stat-pill"><div class="label">% perçu / poids total</div><div class="value" id="cs-pct-earned-vs-total">—</div></div>
+    <!-- Stats basse -->
+    <div class="row-stats-low" id="class-stats-section">
+      <section class="card">
+        <h2 id="class-stats-title" style="margin:0 0 12px;">Stats</h2>
+        <div style="display:grid; gap:8px;">
+          <div class="stat-pill"><div class="label">Moyenne (non notés = 0)</div><div class="value" id="cs-avg">—</div></div>
+          <div class="stat-pill"><div class="label">% réussi</div><div class="value" id="cs-pct-success">—</div></div>
+          <div class="stat-pill" style="border-color:var(--bad);"><div class="label">% perdus</div><div class="value bad" id="cs-pct-lost">—</div></div>
+          <div class="stat-pill" style="border-color:var(--accent);"><div class="label">% non notés</div><div class="value info" id="cs-pct-ungraded">—</div></div>
+          <div class="stat-pill"><div class="label">% perçu / poids total</div><div class="value" id="cs-pct-earned-vs-total">—</div></div>
+        </div>
+      </section>
+      <section class="card">
+        <h2 style="margin:0 0 14px;">Répartition — <span id="cs-chart-name"></span></h2>
+        <div class="charts-wrap">
+          <div class="chart-block">
+            <div class="chart-title">Poids des évals</div>
+            <canvas id="chart-class-evals" width="170" height="170"></canvas>
+            <div class="chart-legend" id="legend-class-evals"></div>
           </div>
-        </section>
-        <section class="card class-stats-charts">
-          <h2 style="margin:0 0 12px;">Répartition — <span id="cs-chart-name"></span></h2>
-          <div class="charts-wrap">
-            <div class="chart-block">
-              <div class="chart-title">Poids des évals</div>
-              <canvas id="chart-class-evals" width="auto" height="auto"></canvas>
-              <div class="chart-legend" id="legend-class-evals"></div>
-            </div>
-            <div class="chart-arrow">&#8594;</div>
-            <div class="chart-block">
-              <div class="chart-title">Score par éval</div>
-              <canvas id="chart-class-scores" width="auto" height="auto"></canvas>
-              <div class="chart-legend" id="legend-class-scores"></div>
-            </div>
+          <div class="chart-arrow">&#8594;</div>
+          <div class="chart-block">
+            <div class="chart-title">Score / Perdus / Non notés</div>
+            <canvas id="chart-class-scores" width="170" height="170"></canvas>
+            <div class="chart-legend" id="legend-class-scores"></div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
 
-  </div><!-- /container -->
+  </div><!-- /page-grid -->
 
+  <!-- Modal Matière -->
   <div id="class-modal" class="modal-overlay" style="display:none;">
     <div class="modal-box">
       <h2 id="class-modal-title">Ajouter une matière</h2>
@@ -240,18 +298,23 @@
     </div>
   </div>
 
+  <!-- Modal Note -->
   <div id="grade-modal" class="modal-overlay" style="display:none;">
     <div class="modal-box">
       <h2 id="grade-modal-title">Ajouter une note</h2>
       <input type="hidden" id="grade-id">
+      <input type="hidden" id="grade-orig-weight" value="0">
       <label>Matière
-        <select id="grade-class">
+        <select id="grade-class" onchange="updateWeightHint()">
           {% for c in classes %}<option value="{{ c.ID }}">{{ c.Name }}</option>{% endfor %}
         </select>
       </label>
       <label>Nom de l'évaluation<input type="text" id="grade-name" placeholder="ex: CC1"></label>
-      <label>Coefficient<input type="number" id="grade-coef" min="0" step="0.5" placeholder="1"></label>
-      <label>Base (noté sur…)<input type="number" id="grade-base" min="0.1" step="0.5" value="20"></label>
+      <label>% de la matière
+        <input type="number" id="grade-weight" min="0.1" max="100" step="0.5" placeholder="ex: 25" oninput="updateWeightHint()">
+      </label>
+      <div class="weight-hint" id="weight-hint">Sélectionnez une matière.</div>
+      <label>Barème (noté sur…)<input type="number" id="grade-base" min="0.1" step="0.5" value="20"></label>
       <label>Note <span style="color:var(--muted);font-size:0.78rem;">(vide = non attribuée)</span>
         <input type="number" id="grade-value" min="0" step="0.5" placeholder="—">
       </label>
@@ -263,91 +326,262 @@
   </div>
 
   <script>
-    const CHART_CREDITS = {{ stats.chart_credits | tojson }};
-    const CHART_SCORES  = {{ stats.chart_scores  | tojson }};
-    const ALL_GRADES    = {{ grades | tojson }};
-    const BG_COLOR      = "#111317";
+    // ============================================================
+    // Données initiales injectées par Jinja2
+    // ============================================================
+    let CHART_CREDITS  = {{ stats.chart_credits | tojson }};
+    let CHART_SCORES   = {{ stats.chart_scores  | tojson }};
+    let ALL_GRADES     = {{ grades | tojson }};
+    let STATS          = {{ stats | tojson }};
+    let ALL_CLASSES    = {{ classes | tojson }};
+    const BG_COLOR       = "#111317";
+    const LOST_COLOR     = "#ff6b6b";
+    const UNGRADED_COLOR = "#67b3ff";
 
-    // ---- Dessin camembert ----
+    // ============================================================
+    // Loading bar
+    // ============================================================
+    const loadingBar = document.getElementById("loading-bar");
+    function showLoading(){ loadingBar.className="loading-bar active"; }
+    function hideLoading(){ loadingBar.className="loading-bar done"; setTimeout(()=>loadingBar.className="loading-bar",400); }
+
+    // ============================================================
+    // Rafraîchissement partiel (sans rechargement de page)
+    // ============================================================
+    async function refreshData() {
+      showLoading();
+      try {
+        const [statsRes, gradesRes, classesRes] = await Promise.all([
+          fetch("/api/stats").then(r=>r.json()),
+          fetch("/api/grades").then(r=>r.json()),
+          fetch("/api/classes").then(r=>r.json()),
+        ]);
+        STATS         = statsRes;
+        CHART_CREDITS = statsRes.chart_credits;
+        CHART_SCORES  = statsRes.chart_scores;
+        ALL_GRADES    = gradesRes;
+        ALL_CLASSES   = classesRes;
+
+        rebuildClassesTable();
+        rebuildGlobalStats();
+        rebuildGradesTable();
+        rebuildClassUsedWeight();
+        renderGlobalCharts();
+
+        const sel = document.getElementById("filter-class");
+        rebuildFilterSelect();
+        // Restaure la sélection
+        const savedCid = sel.value;
+        if (savedCid && !sel.querySelector(`option[value="${savedCid}"]`)) sel.value = "";
+        filterGrades();
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // ---- Reconstruction du tableau matières ----
+    function rebuildClassesTable() {
+      const tbody = document.getElementById("classes-tbody");
+      if (!ALL_CLASSES.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted); font-size:0.8rem;">Aucune matière.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = ALL_CLASSES.map(c => {
+        const cs = CHART_SCORES.find(x=>x.name===c.Name);
+        const avg = cs && cs.avg !== null ? cs.avg : null;
+        const avgHtml = avg !== null
+          ? `<span class="${avg>=10?'good':'bad'}" style="font-weight:600;">${avg}/20</span>`
+          : `<span style="color:var(--muted);">—</span>`;
+        return `<tr data-id="${c.ID}">
+          <td>${escHtml(c.Name)}</td>
+          <td>${c["NB credits"]}</td>
+          <td>${avgHtml}</td>
+          <td><div class="box" style="background:${c.color}; border-color:${c.color};"></div></td>
+          <td>
+            <button class="btn-icon" onclick='editClass(${JSON.stringify(c)})'>✏️</button>
+            <button class="btn-icon" onclick="deleteClass(${c.ID})">🗑️</button>
+          </td>
+        </tr>`;
+      }).join("");
+    }
+
+    // ---- Reconstruction des stats globales ----
+    function rebuildGlobalStats() {
+      const s = STATS;
+      const statsGrid = document.querySelector("#section-global-stats .stats-grid");
+      const color = v => v >= 10 ? "good" : "bad";
+      const compl = v => v >= 80 ? "good" : v >= 40 ? "warn" : "bad";
+      const score = v => v >= 50 ? "good" : v >= 30 ? "warn" : "bad";
+      statsGrid.innerHTML = `
+        <div class="stat ${color(s.score_sur_20)}" title="Score acquis sur 20">
+          <div class="label">Moyenne</div><div class="value">${s.score_sur_20}/20</div>
+        </div>
+        <div class="stat ${compl(s.taux_completion)}" title="${s.filled} éval(s) notée(s) sur ${s.total}">
+          <div class="label">T. Complétion</div><div class="value">${s.taux_completion} %</div>
+        </div>
+        <div class="stat ${score(s.score_obtenu)}" title="Points remportés sur 100 %">
+          <div class="label">Score obtenu</div><div class="value">${s.score_obtenu} %</div>
+        </div>
+        <div class="stat bad" title="Points perdus">
+          <div class="label">Perdus</div><div class="value">${s.lost_pct} %</div>
+        </div>
+        <div class="stat" title="Points non encore notés">
+          <div class="label">Non notés</div><div class="value" style="color:var(--accent);">${s.ungraded_pct} %</div>
+        </div>`;
+    }
+
+    // ---- Reconstruction de la table des notes ----
+    function rebuildGradesTable() {
+      const tbody = document.getElementById("grades-tbody");
+      if (!ALL_GRADES.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted); font-size:0.85rem;">Aucune note.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = ALL_GRADES.map(g => {
+        const base = g.Base || 20;
+        const noteHtml = g.Value !== null
+          ? `<span class="${g.Value/base>=0.5?'good':'bad'}" style="font-weight:700;">${g.Value}/${Number.isInteger(base)?base:base}</span>`
+          : `<span style="color:var(--muted);">—</span>`;
+        const earned = g.Value !== null ? (g.Value/base*g.Weight).toFixed(2) : null;
+        const earnedHtml = earned !== null
+          ? `<span class="${parseFloat(earned)>=g.Weight/2?'good':'bad'}">${earned} %</span>`
+          : `<span style="color:var(--muted);">—</span>`;
+        const classColor = (CHART_SCORES.find(c=>c.grades&&c.grades.some(gr=>gr.name===g.Name))?.color) || "#aaa";
+        // trouver la couleur de la matière
+        const cls = ALL_CLASSES.find(c=>c.ID===g.Id_class);
+        const dotColor = cls ? cls.color : "#aaa";
+        const clsName = cls ? cls.Name : "";
+        return `<tr data-id="${g.ID}" data-class-id="${g.Id_class}"
+                    data-weight="${g.Weight}"
+                    data-value="${g.Value!==null?g.Value:''}"
+                    data-base="${base}">
+          <td><span style="display:inline-flex;align-items:center;gap:6px;">
+            <span style="width:8px;height:8px;border-radius:50%;background:${dotColor};display:inline-block;"></span>
+            ${escHtml(clsName)}
+          </span></td>
+          <td>${escHtml(g.Name)}</td>
+          <td>${noteHtml}</td>
+          <td>${g.Weight} %</td>
+          <td>${earnedHtml}</td>
+          <td>
+            <button class="btn-icon" onclick='editGrade(${JSON.stringify(g)})'>✏️</button>
+            <button class="btn-icon" onclick="deleteGrade(${g.ID})">🗑️</button>
+          </td>
+        </tr>`;
+      }).join("");
+    }
+
+    // ---- Reconstruction du select filtre ----
+    function rebuildFilterSelect() {
+      const sel = document.getElementById("filter-class");
+      const cur = sel.value;
+      const opts = ALL_CLASSES.map(c =>
+        `<option value="${c.ID}" data-name="${escHtml(c.Name)}" data-color="${c.color}" data-credits="${c["NB credits"]}">${escHtml(c.Name)}</option>`
+      ).join("");
+      sel.innerHTML = `<option value="">Toutes les matières</option>${opts}`;
+      if (cur && sel.querySelector(`option[value="${cur}"]`)) sel.value = cur;
+    }
+
+    // ---- Reconstruction de la modale notes select ----
+    function rebuildGradeClassSelect(currentCid) {
+      const sel = document.getElementById("grade-class");
+      sel.innerHTML = ALL_CLASSES.map(c =>
+        `<option value="${c.ID}">${escHtml(c.Name)}</option>`
+      ).join("");
+      if (currentCid) sel.value = currentCid;
+    }
+
+    // ---- Poids utilisé par matière ----
+    let classUsedWeight = {};
+    function rebuildClassUsedWeight() {
+      classUsedWeight = {};
+      ALL_GRADES.forEach(g => {
+        const cid = String(g.Id_class);
+        classUsedWeight[cid] = (classUsedWeight[cid]||0) + g.Weight;
+      });
+    }
+
+    function escHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+    // ============================================================
+    // Dessin camembert
+    // ============================================================
     function drawPie(canvasId, segments, legendId) {
-      const canvas = document.getElementById(canvasId);
-      if (!canvas) return;
+      const canvas = document.getElementById(canvasId); if (!canvas) return;
       const ctx = canvas.getContext("2d");
       const cx = canvas.width/2, cy = canvas.height/2, r = Math.min(cx,cy)-4;
       ctx.clearRect(0,0,canvas.width,canvas.height);
-      const total = segments.reduce((s,seg)=>s+seg.pct,0);
+      const total = segments.reduce((s,sg)=>s+sg.pct,0);
       if (!segments.length || total<=0) {
         ctx.fillStyle="#303744"; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
       } else {
         let start=-Math.PI/2;
-        segments.forEach(seg=>{
-          const angle=(seg.pct/total)*Math.PI*2;
+        segments.forEach(sg=>{
+          const angle=sg.pct/total*Math.PI*2;
           ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,start,start+angle); ctx.closePath();
-          ctx.fillStyle=seg.color; ctx.fill();
-          ctx.strokeStyle="#111317"; ctx.lineWidth=1.5; ctx.stroke();
+          ctx.fillStyle=sg.color; ctx.fill();
+          ctx.strokeStyle=BG_COLOR; ctx.lineWidth=1.5; ctx.stroke();
           start+=angle;
         });
       }
-      const legendEl=document.getElementById(legendId);
-      if (!legendEl) return;
-      if (!segments.length||total<=0){legendEl.innerHTML='<div class="legend-item" style="color:var(--muted)">Aucune donnée</div>';return;}
-      legendEl.innerHTML=segments.map(s=>
-        `<div class="legend-item"><span class="legend-dot" style="background:${s.color};${s.color===BG_COLOR?'border:1px solid #303744;':''}"></span><span title="${s.label}">${s.label} — ${s.pct.toFixed(1)} %</span></div>`
+      const el=document.getElementById(legendId); if (!el) return;
+      if (!segments.length||total<=0){el.innerHTML='<div class="legend-item" style="color:var(--muted)">Aucune donnée</div>';return;}
+      // Exclure le secteur fond de la légende
+      el.innerHTML=segments.filter(sg=>sg.color!==BG_COLOR).map(sg=>
+        `<div class="legend-item"><span class="legend-dot" style="background:${sg.color};"></span><span title="${sg.label}">${sg.label} — ${sg.pct.toFixed(1)}&nbsp;%</span></div>`
       ).join("");
     }
 
-    // ---- Graphiques globaux ----
-    function renderGlobalCharts(){
-      const totalCred=CHART_CREDITS.reduce((s,c)=>s+c.credits,0);
-      drawPie("chart-credits", CHART_CREDITS.map(c=>({color:c.color,pct:totalCred?c.credits/totalCred*100:0,label:c.name})), "legend-credits");
-      const obtained=CHART_SCORES.reduce((s,c)=>s+c.obtained_pct,0);
-      const seg2=CHART_SCORES.filter(c=>c.obtained_pct>0).map(c=>({color:c.color,pct:c.obtained_pct,label:c.name+(c.avg!==null?` (${c.avg}/20)`:"")}));
-      const missing=Math.max(0,100-obtained);
-      if(missing>0.01) seg2.push({color:BG_COLOR,pct:missing,label:"Manquant"});
-      drawPie("chart-scores", seg2, "legend-scores");
-    }
-
-    // ---- Coefficients totaux par matière ----
-    const classCoefTotals={};
-    ALL_GRADES.forEach(g=>{ const cid=String(g.Id_class); classCoefTotals[cid]=(classCoefTotals[cid]||0)+g.Coefficient; });
-
-    // ---- Colonnes % ----
-    function fillPercentColumns(){
-      document.querySelectorAll("tr[data-id]").forEach(row=>{
-        const cid=row.dataset.classId, coef=parseFloat(row.dataset.coef)||0;
-        const val=row.dataset.value, base=parseFloat(row.dataset.base)||20;
-        const total=classCoefTotals[cid]||0;
-        const pctCell=row.querySelector(".pct-of-class");
-        const earnedCell=row.querySelector(".pct-earned");
-        if(total>0){
-          if(pctCell) pctCell.textContent=(coef/total*100).toFixed(1)+" %";
-          if(earnedCell) earnedCell.textContent=val!==""?(parseFloat(val)/base*(coef/total)*100).toFixed(2)+" %":"—";
-        }
-      });
-    }
-
-    // ---- Couleurs dérivées ----
-    function generateColors(n,base){
-      if(!n) return [];
-      if(n===1) return [base];
-      const r=parseInt(base.slice(1,3),16)/255,g=parseInt(base.slice(3,5),16)/255,b=parseInt(base.slice(5,7),16)/255;
-      const max=Math.max(r,g,b),min=Math.min(r,g,b);
-      let h,s,l=(max+min)/2;
-      if(max===min){h=s=0;}
-      else{const d=max-min;s=l>0.5?d/(2-max-min):d/(max+min);switch(max){case r:h=((g-b)/d+(g<b?6:0))/6;break;case g:h=((b-r)/d+2)/6;break;default:h=((r-g)/d+4)/6;}}
-      return Array.from({length:n},(_,i)=>hslToHex((h+i/n*0.4)%1,Math.max(0.4,s),Math.max(0.25,Math.min(0.75,l+(i%2?-0.12:0.12)))));
-    }
+    // ============================================================
+    // Couleurs clair → sombre
+    // ============================================================
+    function hexToHsl(hex){let r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255;const max=Math.max(r,g,b),min=Math.min(r,g,b);let h,s,l=(max+min)/2;if(max===min){h=s=0;}else{const d=max-min;s=l>0.5?d/(2-max-min):d/(max+min);switch(max){case r:h=((g-b)/d+(g<b?6:0))/6;break;case g:h=((b-r)/d+2)/6;break;default:h=((r-g)/d+4)/6;}}return[h,s,l];}
     function hslToHex(h,s,l){let r,g,b;if(!s){r=g=b=l;}else{const q=l<0.5?l*(1+s):l+s-l*s,p=2*l-q;r=hue2rgb(p,q,h+1/3);g=hue2rgb(p,q,h);b=hue2rgb(p,q,h-1/3);}const t=x=>Math.round(x*255).toString(16).padStart(2,'0');return'#'+t(r)+t(g)+t(b);}
     function hue2rgb(p,q,t){if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<0.5)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;}
+    function generateColors(n,base){if(!n)return[];if(n===1)return[base];const[h,s,l]=hexToHsl(base);const lMax=Math.min(0.78,l+0.22),lMin=Math.max(0.28,l-0.22);return Array.from({length:n},(_,i)=>hslToHex(h,Math.max(0.35,s),n===1?l:lMax-(lMax-lMin)*(i/(n-1))));}
 
-    // ---- Filtre + stats par matière ----
+    // ============================================================
+    // Graphiques globaux (par matière)
+    // ============================================================
+    function renderGlobalCharts(){
+      const totalCred=CHART_CREDITS.reduce((s,c)=>s+c.credits,0);
+      drawPie("chart-credits",CHART_CREDITS.map(c=>({color:c.color,pct:totalCred?c.credits/totalCred*100:0,label:c.name})),"legend-credits");
+      const seg2=[];
+      CHART_SCORES.forEach(c=>{if(c.obtained_pct>0.001)seg2.push({color:c.color,pct:c.obtained_pct,label:c.name+(c.avg!==null?` (${c.avg}/20)`:"")});});
+      if(STATS.lost_pct>0.001)    seg2.push({color:LOST_COLOR,    pct:STATS.lost_pct,    label:"Perdus"});
+      if(STATS.ungraded_pct>0.001)seg2.push({color:UNGRADED_COLOR,pct:STATS.ungraded_pct,label:"Non notés"});
+      drawPie("chart-scores",seg2,"legend-scores");
+    }
+
+    // ============================================================
+    // Indice % restant dans la modale
+    // ============================================================
+    function updateWeightHint() {
+      const cid=document.getElementById("grade-class").value;
+      const origW=parseFloat(document.getElementById("grade-orig-weight").value)||0;
+      const entered=parseFloat(document.getElementById("grade-weight").value)||0;
+      const used=classUsedWeight[cid]||0;
+      const avail=Math.max(0,100-used+origW);
+      const remaining=avail-entered;
+      const hint=document.getElementById("weight-hint");
+      if(!cid){hint.textContent="Sélectionnez une matière.";hint.className="weight-hint";return;}
+      hint.textContent=entered<=0?`Disponible : ${avail.toFixed(1)} %`:remaining<0?`⚠ Dépasse le max (${avail.toFixed(1)} %)`:`Après ajout : ${remaining.toFixed(1)} % restants`;
+      hint.className="weight-hint "+(remaining<0?"bad":remaining<10?"warn":"ok");
+    }
+
+    // ============================================================
+    // Filtre notes + stats basse
+    // ============================================================
     function filterGrades(){
-      const sel=document.getElementById("filter-class"), cid=sel.value;
+      const sel=document.getElementById("filter-class"),cid=sel.value;
+      const url=new URL(window.location);
+      cid?url.searchParams.set("class",cid):url.searchParams.delete("class");
+      history.replaceState(null,"",url);
       const rows=document.querySelectorAll("#grades-tbody tr[data-id]");
       let visible=0;
-      rows.forEach(row=>{const match=!cid||row.dataset.classId===cid;row.style.display=match?"":"none";if(match)visible++;});
+      rows.forEach(row=>{const m=!cid||row.dataset.classId===cid;row.style.display=m?"":"none";if(m)visible++;});
       let emptyRow=document.getElementById("grades-empty-row");
-      if(!emptyRow){emptyRow=document.createElement("tr");emptyRow.id="grades-empty-row";emptyRow.innerHTML='<td colspan="7" style="color:var(--muted);font-size:0.85rem;">Aucune note pour cette matière.</td>';document.getElementById("grades-tbody").appendChild(emptyRow);}
+      if(!emptyRow){emptyRow=document.createElement("tr");emptyRow.id="grades-empty-row";emptyRow.innerHTML='<td colspan="6" style="color:var(--muted);font-size:0.85rem;">Aucune note pour cette matière.</td>';document.getElementById("grades-tbody").appendChild(emptyRow);}
       emptyRow.style.display=visible===0?"":"none";
       updateClassStats(cid,sel);
     }
@@ -356,85 +590,160 @@
       const totalCred=CHART_CREDITS.reduce((s,c)=>s+c.credits,0);
 
       if(!cid){
-        // Toutes les matières
         document.getElementById("class-stats-title").textContent="Stats — Toutes les matières";
         document.getElementById("cs-chart-name").textContent="global";
-        const obtained=CHART_SCORES.reduce((s,c)=>s+c.obtained_pct,0);
-        // Moyenne pondérée globale
-        let avgGlob="—";
-        const withAvg=CHART_SCORES.filter(c=>c.avg!==null);
-        if(withAvg.length&&totalCred){
-          const num=withAvg.reduce((s,c)=>{const ci=CHART_CREDITS.find(x=>x.name===c.name);return s+c.avg*(ci?ci.credits:0);},0);
-          const den=withAvg.reduce((s,c)=>{const ci=CHART_CREDITS.find(x=>x.name===c.name);return s+(ci?ci.credits:0);},0);
-          if(den) avgGlob=(num/den).toFixed(2)+"/20";
-        }
-        document.getElementById("cs-avg").textContent=avgGlob;
-        document.getElementById("cs-pct-success").textContent=obtained>0?obtained.toFixed(2)+" % / 100 %":"—";
-        document.getElementById("cs-pct-earned-vs-total").textContent=obtained>0?obtained.toFixed(2)+" % acquis":"—";
-        // Graphiques globaux réutilisés
-        const seg1=CHART_CREDITS.map(c=>({color:c.color,pct:totalCred?c.credits/totalCred*100:0,label:c.name}));
+        let sumWNotees=0,pctReussi=0;
+        const seg1=[],seg2=[];
+        CHART_SCORES.forEach(c=>{
+          const cWeight=totalCred>0?(CHART_CREDITS.find(x=>x.name===c.name)||{credits:0}).credits/totalCred*100:0;
+          const colors=generateColors(c.grades.length,c.color);
+          const sumWMat=c.grades.reduce((s,g)=>s+g.weight,0);
+          c.grades.forEach((g,i)=>{
+            seg1.push({color:colors[i],pct:(g.weight/100)*cWeight,label:c.name+" – "+g.name});
+            if(g.value!==null){
+              const earned=(g.value/(g.base||20))*(g.weight/100)*cWeight;
+              if(earned>0.001) seg2.push({color:colors[i],pct:earned,label:c.name+" – "+g.name});
+              sumWNotees+=(g.weight/100)*cWeight;
+              pctReussi+=earned;
+            }
+          });
+          const unattribMat=Math.max(0,100-sumWMat);
+          if(unattribMat>0.001) seg1.push({color:BG_COLOR,pct:(unattribMat/100)*cWeight,label:""});
+        });
+        const pctNonNote=Math.max(0,100-sumWNotees);
+        const pctPerdu=Math.max(0,sumWNotees-pctReussi);
+        const sur20=STATS.score_sur_20;
+        document.getElementById("cs-avg").textContent=sur20+"/20";
+        document.getElementById("cs-avg").className="value "+(sur20>=10?"good":"bad");
+        document.getElementById("cs-pct-success").textContent=pctReussi.toFixed(2)+" %";
+        document.getElementById("cs-pct-lost").textContent=pctPerdu.toFixed(2)+" %";
+        document.getElementById("cs-pct-ungraded").textContent=pctNonNote.toFixed(2)+" %";
+        document.getElementById("cs-pct-earned-vs-total").textContent=pctReussi.toFixed(2)+" % / 100 %";
+        if(pctPerdu>0.001)   seg2.push({color:LOST_COLOR,    pct:pctPerdu,   label:"Perdus"});
+        if(pctNonNote>0.001) seg2.push({color:UNGRADED_COLOR,pct:pctNonNote, label:"Non notés"});
         drawPie("chart-class-evals",seg1,"legend-class-evals");
-        const seg2=CHART_SCORES.filter(c=>c.obtained_pct>0).map(c=>({color:c.color,pct:c.obtained_pct,label:c.name+(c.avg!==null?` (${c.avg}/20)`:"")}));
-        const miss=Math.max(0,100-obtained);
-        if(miss>0.01) seg2.push({color:BG_COLOR,pct:miss,label:"Manquant"});
         drawPie("chart-class-scores",seg2,"legend-class-scores");
         return;
       }
 
-      // Matière spécifique
       const opt=selEl.querySelector(`option[value="${cid}"]`);
-      const cname=opt?opt.dataset.name:"", ccred=opt?parseFloat(opt.dataset.credits):0, ccolor=opt?opt.dataset.color:"#67b3ff";
+      const cname=opt?opt.dataset.name:"",ccolor=opt?opt.dataset.color:"#67b3ff",ccred=opt?parseFloat(opt.dataset.credits):0;
       document.getElementById("class-stats-title").textContent="Stats — "+cname;
       document.getElementById("cs-chart-name").textContent=cname;
-
-      const cGrades=ALL_GRADES.filter(g=>String(g.Id_class)===cid);
-      const totalCoef=cGrades.reduce((s,g)=>s+g.Coefficient,0);
-      const filled=cGrades.filter(g=>g.Value!==null);
-      const filledCoef=filled.reduce((s,g)=>s+g.Coefficient,0);
-
-      let avg=null;
-      if(filled.length&&filledCoef) avg=filled.reduce((s,g)=>s+(g.Value/(g.Base||20))*20*g.Coefficient,0)/filledCoef;
+      const classData=CHART_SCORES.find(c=>c.name===cname)||{grades:[],obtained_pct:0,ungraded_pct:0,lost_pct:0,avg:null};
+      const cGrades=classData.grades||[];
+      const avg=classData.avg;
+      const pctSuccess=avg!==null?avg/20*100:0;
       document.getElementById("cs-avg").textContent=avg!==null?avg.toFixed(2)+"/20":"—";
-      document.getElementById("cs-pct-success").textContent=avg!==null?(avg/20*100).toFixed(2)+" %":"—";
-
-      const classScore=CHART_SCORES.find(c=>c.name===cname);
-      const obtained=classScore?classScore.obtained_pct:0;
+      document.getElementById("cs-avg").className="value "+(avg!==null&&avg>=10?"good":"bad");
+      document.getElementById("cs-pct-success").textContent=pctSuccess.toFixed(2)+" %";
       const poidsPct=totalCred>0?(ccred/totalCred*100).toFixed(1):"?";
-      document.getElementById("cs-pct-earned-vs-total").textContent=obtained.toFixed(2)+" % / "+poidsPct+" %";
+      document.getElementById("cs-pct-earned-vs-total").textContent=(classData.obtained_pct||0).toFixed(2)+" % / "+poidsPct+" %";
 
       const colors=generateColors(cGrades.length,ccolor);
-      drawPie("chart-class-evals",cGrades.map((g,i)=>({color:colors[i],pct:totalCoef>0?g.Coefficient/totalCoef*100:0,label:g.Name})),"legend-class-evals");
+      const sumWeights=cGrades.reduce((s,g)=>s+g.weight,0);
+      const seg1c=cGrades.map((g,i)=>({color:colors[i],pct:g.weight,label:g.name}));
+      const ungradedW=Math.max(0,100-sumWeights);
+      if(ungradedW>0.001) seg1c.push({color:BG_COLOR,pct:ungradedW,label:""});
+      drawPie("chart-class-evals",seg1c,"legend-class-evals");
 
-      let earnedTotal=0;
-      const seg2=cGrades.map((g,i)=>{
-        if(g.Value===null) return null;
-        const e=(g.Value/(g.Base||20))*(g.Coefficient/totalCoef)*100;
-        earnedTotal+=e;
-        return {color:colors[i],pct:e,label:g.Name};
-      }).filter(Boolean);
-      const miss=Math.max(0,100-earnedTotal);
-      if(miss>0.01) seg2.push({color:BG_COLOR,pct:miss,label:"Manquant / non noté"});
+      const pctReussi=cGrades.reduce((s,g)=>g.value!==null?s+(g.value/(g.base||20))*g.weight:s,0);
+      const sumWeightNotees=cGrades.filter(g=>g.value!==null).reduce((s,g)=>s+g.weight,0);
+      const sumWeightNonNotees=cGrades.filter(g=>g.value===null).reduce((s,g)=>s+g.weight,0);
+      const pctNonNote=sumWeightNonNotees+ungradedW;
+      const pctPerdu=Math.max(0,sumWeightNotees-pctReussi);
+      document.getElementById("cs-pct-lost").textContent=pctPerdu.toFixed(2)+" %";
+      document.getElementById("cs-pct-ungraded").textContent=pctNonNote.toFixed(2)+" %";
+
+      const seg2=[];
+      cGrades.forEach((g,i)=>{
+        if(g.value!==null){const earned=(g.value/(g.base||20))*g.weight;if(earned>0.001)seg2.push({color:colors[i],pct:earned,label:g.name});}
+      });
+      if(pctPerdu>0.001)   seg2.push({color:LOST_COLOR,    pct:pctPerdu,   label:"Perdus"});
+      if(pctNonNote>0.001) seg2.push({color:UNGRADED_COLOR,pct:pctNonNote, label:"Non notés"});
       drawPie("chart-class-scores",seg2,"legend-class-scores");
     }
 
-    // ---- Init ----
+    // ============================================================
+    // Init
+    // ============================================================
+    rebuildClassUsedWeight();
     renderGlobalCharts();
-    fillPercentColumns();
-    updateClassStats("",document.getElementById("filter-class"));
+    (function restoreFilter(){
+      const params=new URLSearchParams(window.location.search),savedCid=params.get("class")||"";
+      const sel=document.getElementById("filter-class");
+      if(savedCid&&sel.querySelector(`option[value="${savedCid}"]`))sel.value=savedCid;
+      filterGrades();
+    })();
 
-    // ---- Modales Matières ----
+    // ============================================================
+    // Modales Matières
+    // ============================================================
     function openClassModal(){document.getElementById("class-id").value="";document.getElementById("class-name").value="";document.getElementById("class-credits").value="";document.getElementById("class-color").value="#67b3ff";document.getElementById("class-modal-title").textContent="Ajouter une matière";document.getElementById("class-modal").style.display="flex";}
     function editClass(c){document.getElementById("class-id").value=c.ID;document.getElementById("class-name").value=c.Name;document.getElementById("class-credits").value=c["NB credits"];document.getElementById("class-color").value=c.color;document.getElementById("class-modal-title").textContent="Modifier la matière";document.getElementById("class-modal").style.display="flex";}
     function closeClassModal(){document.getElementById("class-modal").style.display="none";}
-    async function saveClass(){const id=document.getElementById("class-id").value;const payload={name:document.getElementById("class-name").value.trim(),color:document.getElementById("class-color").value,nb_credits:parseInt(document.getElementById("class-credits").value)||0};await fetch(id?`/api/classes/${id}`:"/api/classes",{method:id?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});location.reload();}
-    async function deleteClass(id){if(!confirm("Supprimer cette matière ? Les notes associées seront aussi supprimées."))return;await fetch(`/api/classes/${id}`,{method:"DELETE"});location.reload();}
+    async function saveClass(){
+      const id=document.getElementById("class-id").value;
+      const payload={name:document.getElementById("class-name").value.trim(),color:document.getElementById("class-color").value,nb_credits:parseInt(document.getElementById("class-credits").value)||0};
+      await fetch(id?`/api/classes/${id}`:"/api/classes",{method:id?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+      closeClassModal();
+      await refreshData();
+    }
+    async function deleteClass(id){
+      if(!confirm("Supprimer cette matière ?"))return;
+      await fetch(`/api/classes/${id}`,{method:"DELETE"});
+      await refreshData();
+    }
 
-    // ---- Modales Notes ----
-    function openGradeModal(){document.getElementById("grade-id").value="";document.getElementById("grade-name").value="";document.getElementById("grade-coef").value="1";document.getElementById("grade-base").value="20";document.getElementById("grade-value").value="";document.getElementById("grade-modal-title").textContent="Ajouter une note";document.getElementById("grade-modal").style.display="flex";}
-    function editGrade(g){document.getElementById("grade-id").value=g.ID;document.getElementById("grade-class").value=g.Id_class;document.getElementById("grade-name").value=g.Name;document.getElementById("grade-coef").value=g.Coefficient;document.getElementById("grade-base").value=g.Base||20;document.getElementById("grade-value").value=g.Value!==null?g.Value:"";document.getElementById("grade-modal-title").textContent="Modifier la note";document.getElementById("grade-modal").style.display="flex";}
+    // ============================================================
+    // Modales Notes
+    // ============================================================
+    function openGradeModal(){
+      document.getElementById("grade-id").value="";
+      document.getElementById("grade-orig-weight").value="0";
+      document.getElementById("grade-name").value="";
+      document.getElementById("grade-weight").value="";
+      document.getElementById("grade-base").value="20";
+      document.getElementById("grade-value").value="";
+      document.getElementById("grade-modal-title").textContent="Ajouter une note";
+      rebuildGradeClassSelect(document.getElementById("filter-class").value||null);
+      document.getElementById("grade-modal").style.display="flex";
+      updateWeightHint();
+    }
+    function editGrade(g){
+      document.getElementById("grade-id").value=g.ID;
+      document.getElementById("grade-orig-weight").value=g.Weight;
+      rebuildGradeClassSelect(String(g.Id_class));
+      document.getElementById("grade-name").value=g.Name;
+      document.getElementById("grade-weight").value=g.Weight;
+      document.getElementById("grade-base").value=g.Base||20;
+      document.getElementById("grade-value").value=g.Value!==null?g.Value:"";
+      document.getElementById("grade-modal-title").textContent="Modifier la note";
+      document.getElementById("grade-modal").style.display="flex";
+      updateWeightHint();
+    }
     function closeGradeModal(){document.getElementById("grade-modal").style.display="none";}
-    async function saveGrade(){const id=document.getElementById("grade-id").value;const rawVal=document.getElementById("grade-value").value.trim();const payload={id_class:parseInt(document.getElementById("grade-class").value),name:document.getElementById("grade-name").value.trim(),coefficient:parseFloat(document.getElementById("grade-coef").value)||1,base:parseFloat(document.getElementById("grade-base").value)||20,value:rawVal!==""?parseFloat(rawVal):null};await fetch(id?`/api/grades/${id}`:"/api/grades",{method:id?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});location.reload();}
-    async function deleteGrade(id){if(!confirm("Supprimer cette note ?"))return;await fetch(`/api/grades/${id}`,{method:"DELETE"});location.reload();}
+    async function saveGrade(){
+      const id=document.getElementById("grade-id").value;
+      const rawVal=document.getElementById("grade-value").value.trim();
+      const weight=parseFloat(document.getElementById("grade-weight").value)||0;
+      const origW=parseFloat(document.getElementById("grade-orig-weight").value)||0;
+      const cid=document.getElementById("grade-class").value;
+      const used=classUsedWeight[cid]||0;
+      const avail=Math.max(0,100-used+origW);
+      if(weight<=0){alert("Le pourcentage doit être supérieur à 0.");return;}
+      if(weight>avail+0.01){alert(`Dépasse le disponible (max ${avail.toFixed(1)} %).`);return;}
+      const base=parseFloat(document.getElementById("grade-base").value)||20;
+      const payload={id_class:parseInt(cid),name:document.getElementById("grade-name").value.trim(),weight,base,value:rawVal!==""?parseFloat(rawVal):null};
+      await fetch(id?`/api/grades/${id}`:"/api/grades",{method:id?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+      closeGradeModal();
+      await refreshData();
+    }
+    async function deleteGrade(id){
+      if(!confirm("Supprimer cette note ?"))return;
+      await fetch(`/api/grades/${id}`,{method:"DELETE"});
+      await refreshData();
+    }
   </script>
 </body>
 </html>
